@@ -1,0 +1,94 @@
+---
+- name: Install and verify Terraform across platforms
+  hosts: localhost
+  gather_facts: yes
+  vars:
+    hashicorp_expected_fingerprint: "91A6 2177 7F4B FB9A 05A0 7A24 7AC6 1C79 8E19 F72A"
+  tasks:
+
+    - name: Debian/Ubuntu | Install prerequisites
+      apt:
+        name:
+          - gnupg
+          - software-properties-common
+        state: present
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Debian/Ubuntu | Download HashiCorp GPG key
+      get_url:
+        url: https://apt.releases.hashicorp.com/gpg
+        dest: /tmp/hashicorp.asc
+        mode: '0644'
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Debian/Ubuntu | Verify HashiCorp GPG key fingerprint
+      shell: gpg --with-fingerprint /tmp/hashicorp.asc 2>/dev/null | sed -n 's/.*Fingerprint = //p'
+      register: hashicorp_fp
+      args:
+        warn: false
+      when: ansible_facts['os_family'] == 'Debian'
+      failed_when: "'{{ hashicorp_expected_fingerprint }}' not in hashicorp_fp.stdout"
+      become: yes
+
+    - name: Debian/Ubuntu | Add HashiCorp keyring (dearmor)
+      shell: |
+        set -o pipefail
+        gpg --dearmor /tmp/hashicorp.asc > /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Debian/Ubuntu | Add HashiCorp apt repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_facts['lsb']['codename'] | default(ansible_lsb.codename | default('')) }} main"
+        filename: hashicorp
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Debian/Ubuntu | Update apt cache
+      apt:
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Debian/Ubuntu | Install Terraform
+      apt:
+        name: terraform
+        state: latest
+      when: ansible_facts['os_family'] == 'Debian'
+      become: yes
+
+    - name: Windows | Ensure Chocolatey is present
+      community.windows.win_chocolatey:
+        name: chocolatey
+        state: present
+      when: ansible_facts['os_family'] == 'Windows'
+
+    - name: Windows | Install Terraform via Chocolatey
+      community.windows.win_chocolatey:
+        name: terraform
+        state: present
+      when: ansible_facts['os_family'] == 'Windows'
+
+    - name: Windows | Ensure Chocolatey bin is in PATH (machine)
+      win_environment:
+        state: present
+        name: PATH
+        value: 'C:\ProgramData\chocolatey\bin'
+        level: Machine
+      when: ansible_facts['os_family'] == 'Windows'
+
+    - name: Validation | Run terraform -version (smoke test)
+      command: terraform -version
+      register: tf_output
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Validation | Success message only if terraform is available
+      debug:
+        msg: "Terraform is installed: {{ (tf_output.stdout_lines[0] | default(tf_output.stdout)) }}"
+      when: tf_output is defined and tf_output.rc == 0
