@@ -1,0 +1,100 @@
+---
+- name: Cross-platform Terraform setup
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+
+    #########################################################
+    # LINUX (Debian / Ubuntu)
+    #########################################################
+
+    - name: Install required dependencies on Debian/Ubuntu
+      apt:
+        name:
+          - gnupg
+          - software-properties-common
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Add HashiCorp GPG key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Verify HashiCorp GPG fingerprint
+      shell: |
+        apt-key fingerprint | grep "HashiCorp"
+      register: gpg_fingerprint
+      changed_when: false
+      when: ansible_os_family == "Debian"
+
+    - name: Show verified fingerprint
+      debug:
+        msg: "HashiCorp GPG fingerprint verified successfully."
+      when:
+        - ansible_os_family == "Debian"
+        - gpg_fingerprint.rc == 0
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+        filename: hashicorp
+      when: ansible_os_family == "Debian"
+
+    - name: Install Terraform on Debian/Ubuntu
+      apt:
+        name: terraform
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    #########################################################
+    # WINDOWS
+    #########################################################
+
+    - name: Install Terraform on Windows using Chocolatey
+      community.windows.win_chocolatey:
+        name: terraform
+        state: present
+      when: ansible_os_family == "Windows"
+
+    - name: Ensure Terraform path is available
+      ansible.windows.win_path:
+        elements:
+          - C:\ProgramData\chocolatey\bin
+      when: ansible_os_family == "Windows"
+
+    #########################################################
+    # VALIDATION (SMOKE TEST)
+    #########################################################
+
+    - name: Run terraform version on Linux
+      command: terraform -version
+      register: terraform_version_linux
+      changed_when: false
+      when: ansible_os_family == "Debian"
+
+    - name: Run terraform version on Windows
+      win_command: terraform -version
+      register: terraform_version_windows
+      changed_when: false
+      when: ansible_os_family == "Windows"
+
+    - name: Print success message for Linux
+      debug:
+        msg: "{{ terraform_version_linux.stdout_lines }}"
+      when:
+        - ansible_os_family == "Debian"
+        - terraform_version_linux.rc == 0
+
+    - name: Print success message for Windows
+      debug:
+        msg: "{{ terraform_version_windows.stdout_lines }}"
+      when:
+        - ansible_os_family == "Windows"
+        - terraform_version_windows.rc == 0
