@@ -1,0 +1,59 @@
+- name: Instalar Terraform
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Debian/Ubuntu
+      when: ansible_facts['os_family'] == "Debian"
+      block:
+        - name: Dependencias
+          ansible.builtin.apt:
+            name:
+              - gnupg
+              - software-properties-common
+            state: present
+            update_cache: yes
+          become: yes
+
+        - name: Añadir la clave GPG oficial de HashiCorp
+          ansible.builtin.apt_key:
+            url: https://apt.releases.hashicorp.com/gpg
+            keyring: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+            fingerprint: "798A EC65 4E5C 1542 8C8E 42EE AA16 FCBC A621 E701"
+            state: present
+          become: yes
+
+        - name: Agregar repositorio oficial de HashiCorp
+          ansible.builtin.apt_repository:
+            repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+            state: present
+            update_cache: no
+          become: yes
+
+        - name: Instalar Terraform
+          ansible.builtin.apt:
+            name: terraform
+            state: present
+            update_cache: yes
+          become: yes
+
+    - name: Instalación en Windows
+      when: ansible_facts['os_family'] == "Windows"
+      block:
+        - name: Instalar Terraform mediante Chocolatey
+          chocolatey.chocolatey.win_chocolatey:
+            name: terraform
+            state: present
+
+    - name: Verificar instalación de Terraform
+      ansible.builtin.command: terraform -version
+      register: terraform_version
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Mostrar versión instalada
+      ansible.builtin.debug:
+        msg: "Terraform instalado. Versión: {{ terraform_version.stdout_lines[0] }}"
+      when: terraform_version.rc == 0
+# Trate de probarlo en local por eso el inventory
+# en linux(wsl) avanzo pero choca con dependencias que llevan VPN,
+# en win me dio error de red probablemente por credenciales o configuración de red
